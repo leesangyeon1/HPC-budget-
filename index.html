@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced Cluster Architect</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --primary: #2563eb; --danger: #dc2626; --success: #16a34a; --bg: #f8fafc; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .dashboard { width: 1000px; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
+        .budget-card { text-align: right; }
+        .budget-value { font-size: 24px; font-weight: 800; color: var(--primary); }
+        .over-budget { color: var(--danger) !important; animation: shake 0.5s; }
+
+        .main-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        
+        table { width: 100%; border-spacing: 0; margin-bottom: 20px; }
+        th { text-align: left; color: #64748b; font-size: 12px; text-transform: uppercase; padding: 10px; }
+        td { padding: 12px 10px; border-top: 1px solid #f1f5f9; }
+        
+        .input-box { width: 50px; padding: 8px; border: 2px solid #e2e8f0; border-radius: 6px; font-weight: bold; }
+        
+        .chart-section { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; position: relative; }
+        .inspector-panel { margin-top: 20px; padding: 15px; background: #f1f5f9; border-radius: 8px; min-height: 80px; }
+        .inspector-hint { color: #64748b; font-style: italic; font-size: 0.9em; }
+
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="header">
+        <div>
+            <h1 style="margin:0">Cluster Architect v2</h1>
+            <p style="color:#64748b; margin: 5px 0 0 0;">Budget: $560,000 | General Purpose Optimization</p>
+        </div>
+        <div class="budget-card">
+            <div style="font-size: 12px; color: #64748b;">TOTAL SPENT</div>
+            <div id="totalCostDisplay" class="budget-value">$0</div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="controls">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Configuration Option</th>
+                        <th>Unit Cost</th>
+                        <th>Qty</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Opt 1:</strong> 64c (3.25GHz) | 256GB</td>
+                        <td>$17,803</td>
+                        <td><input type="number" id="q1" class="input-box" value="0" min="0" oninput="calculate()"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Opt 2:</strong> 128c (2.45GHz) | 512GB</td>
+                        <td>$23,730</td>
+                        <td><input type="number" id="q2" class="input-box" value="0" min="0" oninput="calculate()"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Opt 3:</strong> 64c | 256GB | 2x L40s</td>
+                        <td>$34,370</td>
+                        <td><input type="number" id="q3" class="input-box" value="0" min="0" oninput="calculate()"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Opt 4:</strong> 128c | 512GB | 2x H100</td>
+                        <td>$79,978</td>
+                        <td><input type="number" id="q4" class="input-box" value="0" min="0" oninput="calculate()"></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="inspector-panel" id="inspector">
+                <div class="inspector-hint">Click a point on the chart to see specific resource totals...</div>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <canvas id="radarChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    
+    // Data structures for the 4 axes
+    let clusterData = {
+        cost: 0,
+        cpuScore: 0,
+        gpuScore: 0,
+        memScore: 0,
+        raw: { cores: 0, ram: 0, storage: 0, gpus: 0 }
+    };
+
+    const radarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: ['CPU Throughput', 'GPU Capability', 'Memory Density', 'Budget Utilization'],
+            datasets: [{
+                label: 'Cluster Personality Profile',
+                data: [0, 0, 0, 0],
+                backgroundColor: 'rgba(37, 99, 235, 0.2)',
+                borderColor: 'rgba(37, 99, 235, 1)',
+                pointBackgroundColor: 'rgba(37, 99, 235, 1)',
+                pointHoverRadius: 10
+            }]
+        },
+        options: {
+            scales: { r: { min: 0, max: 100, ticks: { display: false } } },
+            plugins: { 
+                tooltip: { enabled: true },
+                legend: { display: false }
+            },
+            onClick: (e, activeEls) => {
+                if (activeEls.length > 0) {
+                    const index = activeEls[0].index;
+                    updateInspector(index);
+                }
+            }
+        }
+    });
+
+    function calculate() {
+        const q = [
+            parseInt(document.getElementById('q1').value) || 0,
+            parseInt(document.getElementById('q2').value) || 0,
+            parseInt(document.getElementById('q3').value) || 0,
+            parseInt(document.getElementById('q4').value) || 0
+        ];
+
+        // Total Resources
+        clusterData.cost = (q[0]*17803) + (q[1]*23730) + (q[2]*34370) + (q[3]*79978);
+        clusterData.raw.cores = (q[0]*64) + (q[1]*128) + (q[2]*64) + (q[3]*128);
+        clusterData.raw.ram = (q[0]*256) + (q[1]*512) + (q[2]*256) + (q[3]*512);
+        clusterData.raw.storage = (q[0]*0.48) + (q[1]*0.48) + (q[2]*1.6) + (q[3]*1.6);
+        clusterData.raw.gpus = (q[2]*2) + (q[3]*2);
+
+        // Normalized Scores for Radar (0-100 scale)
+        // Max possible cores at budget is ~3000, Max GPUs ~14
+        const cpuScore = Math.min(100, ((q[0]*64*3.25) + (q[1]*128*2.45) + (q[2]*64*2.45) + (q[3]*128*2.45)) / 80);
+        const gpuScore = Math.min(100, ((q[2]*2) + (q[3]*2*2.5)) * 2); 
+        const memScore = Math.min(100, (clusterData.raw.ram / 150));
+        const budgetUtil = Math.min(100, (clusterData.cost / 560000) * 100);
+
+        // Update UI
+        const costDisplay = document.getElementById('totalCostDisplay');
+        costDisplay.innerText = '$' + clusterData.cost.toLocaleString();
+        
+        if (clusterData.cost > 560000) {
+            costDisplay.classList.add('over-budget');
+        } else {
+            costDisplay.classList.remove('over-budget');
+        }
+
+        radarChart.data.datasets[0].data = [cpuScore, gpuScore, memScore, budgetUtil];
+        radarChart.update();
+    }
+
+    function updateInspector(index) {
+        const panel = document.getElementById('inspector');
+        const labels = [
+            `<strong>CPU Power:</strong> ${clusterData.raw.cores} Total Cores across the cluster.`,
+            `<strong>GPU Power:</strong> ${clusterData.raw.gpus} Total GPUs. Focus: ${clusterData.raw.gpus > 10 ? 'High Compute' : 'Standard'}.`,
+            `<strong>Memory/Data:</strong> ${clusterData.raw.ram}GB RAM and ${clusterData.raw.storage.toFixed(2)}TB SSD storage.`,
+            `<strong>Budget Status:</strong> $${(560000 - clusterData.cost).toLocaleString()} remaining.`
+        ];
+        panel.innerHTML = `<div style="color:var(--primary)">${labels[index]}</div>`;
+    }
+
+    calculate(); // Init
+</script>
+
+</body>
+</html>
